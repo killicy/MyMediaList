@@ -15,6 +15,22 @@ class MalApi {
     return {'Authorization': 'Bearer $token'};
   }
 
+  /// Fetches characters via Jikan (free MAL proxy). MAL's official v2 API
+  /// does not expose characters; Jikan does. Sorted by character favorites
+  /// (highest first).
+  static Future<List<AnimeCharacter>> getAnimeCharacters(int id) async {
+    final uri = Uri.parse('https://api.jikan.moe/v4/anime/$id/characters');
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      throw Exception('Jikan ${res.statusCode}: ${res.body}');
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = (body['data'] as List).cast<Map<String, dynamic>>();
+    final list = data.map(AnimeCharacter.fromJson).toList()
+      ..sort((a, b) => b.favorites.compareTo(a.favorites));
+    return list;
+  }
+
   static Future<AnimeDetail> getAnimeDetail(int id) async {
     final uri = Uri.parse('$_base/anime/$id').replace(queryParameters: {
       'fields':
@@ -223,6 +239,73 @@ class AnimeDetail {
     if (avgEpisodeSeconds == null || avgEpisodeSeconds! <= 0) return null;
     final mins = (avgEpisodeSeconds! / 60).round();
     return '$mins min';
+  }
+}
+
+class AnimeCharacter {
+  final int id;
+  final String name;
+  final String? imageUrl;
+  final String role; // 'Main' / 'Supporting'
+  final int favorites;
+  final VoiceActor? voiceActor;
+
+  AnimeCharacter({
+    required this.id,
+    required this.name,
+    this.imageUrl,
+    required this.role,
+    this.favorites = 0,
+    this.voiceActor,
+  });
+
+  factory AnimeCharacter.fromJson(Map<String, dynamic> j) {
+    final c = j['character'] as Map<String, dynamic>;
+    final images = c['images'] as Map<String, dynamic>?;
+    final jpg = images?['jpg'] as Map<String, dynamic>?;
+    final vas = (j['voice_actors'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    // Japanese VA only — no fallback to other languages.
+    Map<String, dynamic>? va;
+    for (final v in vas) {
+      if ((v['language'] as String?)?.toLowerCase() == 'japanese') {
+        va = v;
+        break;
+      }
+    }
+    return AnimeCharacter(
+      id: c['mal_id'] as int,
+      name: c['name'] as String,
+      imageUrl: jpg?['image_url'] as String?,
+      role: j['role'] as String? ?? '',
+      favorites: (j['favorites'] as int?) ?? 0,
+      voiceActor: va == null ? null : VoiceActor.fromJson(va),
+    );
+  }
+}
+
+class VoiceActor {
+  final int id;
+  final String name;
+  final String? imageUrl;
+  final String language;
+
+  VoiceActor({
+    required this.id,
+    required this.name,
+    this.imageUrl,
+    required this.language,
+  });
+
+  factory VoiceActor.fromJson(Map<String, dynamic> j) {
+    final p = j['person'] as Map<String, dynamic>;
+    final images = p['images'] as Map<String, dynamic>?;
+    final jpg = images?['jpg'] as Map<String, dynamic>?;
+    return VoiceActor(
+      id: p['mal_id'] as int,
+      name: p['name'] as String,
+      imageUrl: jpg?['image_url'] as String?,
+      language: j['language'] as String? ?? '',
+    );
   }
 }
 

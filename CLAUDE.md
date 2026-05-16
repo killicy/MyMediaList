@@ -33,7 +33,8 @@ lib/
   main.dart              MyApp + HomeShell (AppBar w/ avatar + search + bottom nav)
                          + AnimeListPage (status tabs, pinned header, sort) + _ListHeader + _AnimeRow
                          + placeholder pages
-  mal_api.dart           MalApi + models: AnimeSummary, AnimeListEntry, AnimeDetail, MalUser, AnimeStatistics
+  mal_api.dart           MalApi + models: AnimeSummary, AnimeListEntry, AnimeDetail, RelatedAnime,
+                         AnimeCharacter, VoiceActor, MalUser, AnimeStatistics
   auth.dart              MalAuth — PKCE OAuth flow + secure token storage
   profile_page.dart      ProfilePage — avatar, joined date, anime stats, status distribution bar
   anime_search_page.dart AnimeSearchPage — debounced text search, taps into AnimeDetailPage
@@ -55,15 +56,18 @@ Username is hardcoded for now; the plan is to move to a settings screen / persis
 ## MAL API integration
 
 - **App type registered: `other`** → PKCE flow, no client secret. A `web` type would have a secret that can't safely ship in a mobile binary.
-- Two access modes coexist:
+- Three access modes coexist:
   - **Client-ID-only** (`X-MAL-CLIENT-ID` header) for public list/detail/search reads — used by `MalApi.searchAnime`, `getUserAnimeList`, `getAnimeDetail`.
   - **Bearer token** (OAuth PKCE) for `@me` profile data — used by `MalApi.getMe`. MAL refuses any `/v2/users/{name}` call without OAuth, even for public profiles.
+  - **Jikan** (third-party MAL proxy at `https://api.jikan.moe/v4`) for characters/voice actors, which the MAL v2 API does not expose at all — used by `MalApi.getAnimeCharacters`.
 - Endpoints used:
   - `GET /v2/anime?q=...` (client-id) — search page
-  - `GET /v2/anime/{id}?fields=...` (client-id) — detail page
+  - `GET /v2/anime/{id}?fields=...` (client-id) — detail page; `related_anime` is included
   - `GET /v2/users/{user}/animelist?status=...&fields=...&sort=list_updated_at&limit=1000&nsfw=true` (client-id) — Anime tab. Follows `paging.next` to handle lists >1000 entries.
   - `GET /v2/users/@me?fields=...,anime_statistics` (bearer) — Profile page
+  - `GET https://api.jikan.moe/v4/anime/{id}/characters` (no auth, Jikan) — Characters & Voice Actors section
 - **`nsfw=true` matters**: the API hides NSFW-tagged entries by default. Without it, list counts disagree with the MAL web UI.
+- **Jikan caveats**: free third-party service with rate limits (~3 req/sec, 60/min). Returns `favorites` per character and a `voice_actors` array. We sort by `favorites` desc and pick the **Japanese** VA only (no fallback). One call fires per detail-page load, in parallel with the main `getAnimeDetail`.
 
 ## OAuth (PKCE)
 
@@ -115,7 +119,11 @@ Opened from list rows or search results. Fetches via `MalApi.getAnimeDetail`.
   7. Rating (mapped from MAL codes: `r` → `R - 17+ (violence & profanity)`, etc.)
 
   **Intentionally excluded**: type / year / status / episode count / episode duration / genres — already shown in the meta line above. **Not available via API**: Producers, Licensors, Themes (MAL-web-only — would need scraping).
-- **Related section** (below Information): same divider + centered "Related" heading. Each row: 50×70 thumbnail + title + `relation_type_formatted` (e.g. "Sequel", "Side story", "Full story", "Adaptation"). Tap → push another `AnimeDetailPage` for that anime. First 4 shown, chevron reveals the rest.
+- **Related Entries section** (below Information): same divider + centered "Related Entries" heading. **Two-column compact grid** — each card: 40×56 thumbnail + title (non-bold, 12px) + `relation_type_formatted` ("Sequel", "Side story", "Full story", "Adaptation", etc.) in 11px secondary text. Tap → push another `AnimeDetailPage` for that anime. First 4 shown (2 rows of 2), chevron reveals the rest.
+- **Characters & Voice Actors section** (below Related Entries): divider + centered heading. Horizontally scrollable row of compact entries. Each entry is two stacked 3:4 tiles:
+  - **Character tile** — image with name + role ("Main"/"Supporting") overlaid at the bottom on a dark gradient. Name uses `FontWeight.w500` (deliberately lighter than the section heading).
+  - **Voice-actor tile** below — image with VA name only. **Japanese only**, no fallback; if a character has no JP VA the slot is empty.
+  - Sorted by character `favorites` desc (returned by Jikan).
 - All section chevrons share the same compact style so spacing between sections is tight and consistent.
 - AppBar shows heart and share icons as **stubs** (no logic wired). Heart needs OAuth write to toggle favorites; share needs `share_plus` package.
 - **No Favorites count**: MAL API doesn't expose `num_favorites`. Could be scraped from the web profile later.
@@ -159,6 +167,7 @@ Home / Movies / TV / Schedule are `_PlaceholderPage` centered-text stubs.
 - `Image.network` everywhere with no caching → consider `cached_network_image` once the list grows.
 - No list refresh action — cache is per-process. Add a refresh button to `_ListHeader` if data freshness matters.
 - Detail page **Favorites** is omitted (API doesn't expose `num_favorites`). Would need profile-page scraping.
+- **Jikan dependency** for characters/VAs is the only third-party data source. If Jikan goes down or rate-limits, the section just doesn't render (errors are swallowed in `_CharactersSection`). Consider caching or a "More cast" link if it ever becomes a sore spot.
 - Search page has **no filters** (genre/type/year/rating) — MAL search supports a few via the API, and many more only via the web UI. Add as the use case demands.
 - **Manga stats** require scraping (not in API). Profile page notes this in the UI.
 

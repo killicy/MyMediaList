@@ -19,6 +19,7 @@ class AnimeDetailPage extends StatefulWidget {
 
 class _AnimeDetailPageState extends State<AnimeDetailPage> {
   late Future<AnimeDetail> _future;
+  late Future<List<AnimeCharacter>> _charactersFuture;
   bool _synopsisExpanded = false;
   bool _infoExpanded = false;
   bool _relatedExpanded = false;
@@ -27,6 +28,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
   void initState() {
     super.initState();
     _future = MalApi.getAnimeDetail(widget.id);
+    _charactersFuture = MalApi.getAnimeCharacters(widget.id);
   }
 
   @override
@@ -67,6 +69,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
           }
           return _DetailBody(
             detail: snap.data!,
+            charactersFuture: _charactersFuture,
             synopsisExpanded: _synopsisExpanded,
             infoExpanded: _infoExpanded,
             relatedExpanded: _relatedExpanded,
@@ -86,6 +89,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
 class _DetailBody extends StatelessWidget {
   const _DetailBody({
     required this.detail,
+    required this.charactersFuture,
     required this.synopsisExpanded,
     required this.infoExpanded,
     required this.relatedExpanded,
@@ -95,6 +99,7 @@ class _DetailBody extends StatelessWidget {
   });
 
   final AnimeDetail detail;
+  final Future<List<AnimeCharacter>> charactersFuture;
   final bool synopsisExpanded;
   final bool infoExpanded;
   final bool relatedExpanded;
@@ -188,6 +193,7 @@ class _DetailBody extends StatelessWidget {
             expanded: relatedExpanded,
             onToggle: onToggleRelated,
           ),
+          _CharactersSection(future: charactersFuture),
           const SizedBox(height: 32),
         ],
       ),
@@ -615,7 +621,7 @@ class _RelatedSection extends StatelessWidget {
         const SizedBox(height: 12),
         const Center(
           child: Text(
-            'Related',
+            'Related Entries',
             style: TextStyle(
               color: Colors.white,
               fontSize: 16,
@@ -696,6 +702,167 @@ class _RelatedCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CharactersSection extends StatelessWidget {
+  const _CharactersSection({required this.future});
+  final Future<List<AnimeCharacter>> future;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<AnimeCharacter>>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const SizedBox.shrink();
+        }
+        if (snap.hasError) return const SizedBox.shrink();
+        final items = snap.data ?? const [];
+        if (items.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: Color(0xFF1F1F1F)),
+            const SizedBox(height: 12),
+            const Center(
+              child: Text(
+                'Characters & Voice Actors',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 286,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const ClampingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (_, i) => _CharacterCard(item: items[i]),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CharacterCard extends StatelessWidget {
+  const _CharacterCard({required this.item});
+  final AnimeCharacter item;
+
+  @override
+  Widget build(BuildContext context) {
+    final va = item.voiceActor;
+    return SizedBox(
+      width: 100,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PosterTile(
+            imageUrl: item.imageUrl,
+            primary: item.name,
+            secondary: item.role,
+          ),
+          const SizedBox(height: 6),
+          if (va != null)
+            _PosterTile(
+              imageUrl: va.imageUrl,
+              primary: va.name,
+              secondary: '',
+            )
+          else
+            const AspectRatio(
+              aspectRatio: 3 / 4,
+              child: SizedBox.shrink(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PosterTile extends StatelessWidget {
+  const _PosterTile({
+    required this.imageUrl,
+    required this.primary,
+    required this.secondary,
+  });
+
+  final String? imageUrl;
+  final String primary;
+  final String secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 3 / 4,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            imageUrl == null
+                ? Container(color: const Color(0xFF222222))
+                : Image.network(imageUrl!, fit: BoxFit.cover),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black87],
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      primary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        height: 1.15,
+                      ),
+                    ),
+                    if (secondary.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Text(
+                          secondary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                            height: 1.15,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
