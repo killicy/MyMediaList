@@ -17,7 +17,10 @@ A personal Flutter app for browsing my MyAnimeList account on Android. Built as 
   - Title, type/year/status/episodes/duration, genre chips
   - Expandable synopsis
   - **Information** section: English / Japanese / Synonyms / Aired / Studios / Source / Rating
-  - **Related** anime: 2-column compact grid with relation type (Sequel, Side story, Adaptation, etc.)
+  - **Related Entries**: 2-column compact grid with media type and relation (e.g. `TV · Sequel`, `Movie · Full story`)
+  - **Characters & Voice Actors**: horizontally scrolling cards with character image (name + role overlaid) above the Japanese voice-actor image. Main characters first, then sorted by favorites
+  - **Music**: row-aligned table of opening/ending themes (Jikan-sourced)
+  - **Recommendations**: horizontally scrolling poster cards with the number of users who recommended each entry
 - **Profile page** (requires OAuth login): avatar, joined date, anime statistics, status distribution bar.
 - **Auth**: MAL OAuth 2.0 PKCE flow. Tokens stored via `flutter_secure_storage` (Android Keystore).
 

@@ -37,8 +37,9 @@ class MalApi {
   }
 
   /// Fetches characters via Jikan (free MAL proxy). MAL's official v2 API
-  /// does not expose characters; Jikan does. Sorted by character favorites
-  /// (highest first).
+  /// does not expose characters; Jikan does. Sorted by role (Main first,
+  /// then Supporting, then everything else), and within each group by
+  /// favorites desc.
   static Future<List<AnimeCharacter>> getAnimeCharacters(int id) async {
     final uri = Uri.parse('https://api.jikan.moe/v4/anime/$id/characters');
     final res = await http.get(uri);
@@ -47,15 +48,29 @@ class MalApi {
     }
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final data = (body['data'] as List).cast<Map<String, dynamic>>();
+    int rolePriority(String r) {
+      switch (r.toLowerCase()) {
+        case 'main':
+          return 0;
+        case 'supporting':
+          return 1;
+        default:
+          return 2;
+      }
+    }
     final list = data.map(AnimeCharacter.fromJson).toList()
-      ..sort((a, b) => b.favorites.compareTo(a.favorites));
+      ..sort((a, b) {
+        final byRole = rolePriority(a.role).compareTo(rolePriority(b.role));
+        if (byRole != 0) return byRole;
+        return b.favorites.compareTo(a.favorites);
+      });
     return list;
   }
 
   static Future<AnimeDetail> getAnimeDetail(int id) async {
     final uri = Uri.parse('$_base/anime/$id').replace(queryParameters: {
       'fields':
-          'id,title,main_picture,pictures,alternative_titles,start_date,end_date,synopsis,mean,rank,popularity,num_list_users,num_scoring_users,media_type,status,genres,num_episodes,start_season,average_episode_duration,studios,source,rating,related_anime',
+          'id,title,main_picture,pictures,alternative_titles,start_date,end_date,synopsis,mean,rank,popularity,num_list_users,num_scoring_users,media_type,status,genres,num_episodes,start_season,average_episode_duration,studios,source,rating,related_anime{node{id,title,main_picture,media_type},relation_type_formatted,relation_type},recommendations{node{id,title,main_picture,media_type},num_recommendations}',
     });
     final res = await http.get(uri, headers: _headers);
     if (res.statusCode != 200) {
@@ -151,6 +166,7 @@ class AnimeDetail {
   final String? source;
   final String? rating;
   final List<RelatedAnime> relatedAnime;
+  final List<RelatedAnime> recommendations;
 
   AnimeDetail({
     required this.id,
@@ -179,6 +195,7 @@ class AnimeDetail {
     this.source,
     this.rating,
     this.relatedAnime = const [],
+    this.recommendations = const [],
   });
 
   factory AnimeDetail.fromJson(Map<String, dynamic> j) {
@@ -229,6 +246,10 @@ class AnimeDetail {
       relatedAnime: [
         for (final r in (j['related_anime'] as List? ?? const []))
           RelatedAnime.fromJson(r as Map<String, dynamic>),
+      ],
+      recommendations: [
+        for (final r in (j['recommendations'] as List? ?? const []))
+          RelatedAnime.fromRecommendation(r as Map<String, dynamic>),
       ],
     );
   }
@@ -335,12 +356,14 @@ class RelatedAnime {
   final String title;
   final String? pictureUrl;
   final String relationType;
+  final String? mediaType; // raw API value: tv, movie, ova, ona, special, music
 
   RelatedAnime({
     required this.id,
     required this.title,
     this.pictureUrl,
     required this.relationType,
+    this.mediaType,
   });
 
   factory RelatedAnime.fromJson(Map<String, dynamic> j) {
@@ -351,7 +374,36 @@ class RelatedAnime {
       pictureUrl: (node['main_picture'] as Map?)?['medium'] as String?,
       relationType:
           (j['relation_type_formatted'] as String?) ?? (j['relation_type'] as String? ?? ''),
+      mediaType: node['media_type'] as String?,
     );
+  }
+
+  /// Recommendations come from `/anime/{id}` with a different shape:
+  /// `{ node, num_recommendations }`. We reuse RelatedAnime by mapping the
+  /// count into the subtitle slot.
+  factory RelatedAnime.fromRecommendation(Map<String, dynamic> j) {
+    final node = j['node'] as Map<String, dynamic>;
+    final n = (j['num_recommendations'] as int?) ?? 0;
+    return RelatedAnime(
+      id: node['id'] as int,
+      title: node['title'] as String,
+      pictureUrl: (node['main_picture'] as Map?)?['medium'] as String?,
+      relationType: '$n user${n == 1 ? '' : 's'}',
+      mediaType: node['media_type'] as String?,
+    );
+  }
+
+  String? get mediaTypeLabel {
+    switch (mediaType) {
+      case 'tv': return 'TV';
+      case 'ova': return 'OVA';
+      case 'ona': return 'ONA';
+      case 'movie': return 'Movie';
+      case 'special': return 'Special';
+      case 'music': return 'Music';
+      case null: return null;
+      default: return mediaType!.toUpperCase();
+    }
   }
 }
 

@@ -62,7 +62,7 @@ Username is hardcoded for now; the plan is to move to a settings screen / persis
   - **Jikan** (third-party MAL proxy at `https://api.jikan.moe/v4`) for characters/voice actors, which the MAL v2 API does not expose at all — used by `MalApi.getAnimeCharacters`.
 - Endpoints used:
   - `GET /v2/anime?q=...` (client-id) — search page
-  - `GET /v2/anime/{id}?fields=...` (client-id) — detail page; `related_anime` is included
+  - `GET /v2/anime/{id}?fields=...` (client-id) — detail page; `related_anime` and `recommendations` are included
   - `GET /v2/users/{user}/animelist?status=...&fields=...&sort=list_updated_at&limit=1000&nsfw=true` (client-id) — Anime tab. Follows `paging.next` to handle lists >1000 entries.
   - `GET /v2/users/@me?fields=...,anime_statistics` (bearer) — Profile page
   - `GET https://api.jikan.moe/v4/anime/{id}/characters` (no auth, Jikan) — Characters & Voice Actors section
@@ -120,12 +120,13 @@ Opened from list rows or search results. Fetches via `MalApi.getAnimeDetail`.
   7. Rating (mapped from MAL codes: `r` → `R - 17+ (violence & profanity)`, etc.)
 
   **Intentionally excluded**: type / year / status / episode count / episode duration / genres — already shown in the meta line above. **Not available via API**: Producers, Licensors, Themes (MAL-web-only — would need scraping).
-- **Related Entries section** (below Information): same divider + centered "Related Entries" heading. **Two-column compact grid** — each card: 40×56 thumbnail + title (non-bold, 12px) + `relation_type_formatted` ("Sequel", "Side story", "Full story", "Adaptation", etc.) in 11px secondary text. Tap → push another `AnimeDetailPage` for that anime. First 4 shown (2 rows of 2), chevron reveals the rest.
-- **Characters & Voice Actors section** (below Related Entries): divider + centered heading. Horizontally scrollable row of compact entries. Each entry is two stacked 3:4 tiles:
+- **Related Entries section** (below Information, `_RelatedEntriesSection`): divider + centered heading. **2-column compact grid** of `_RelatedCard` rows. Each row: 40×56 thumbnail + title (non-bold, 12px) + subtitle line `Type · Relation` (e.g. `TV · Sequel`, `Movie · Full story`). Type comes from MAL's nested `related_anime{node{media_type}}` field selection — labels are `TV / Movie / OVA / ONA / Special / Music`. Tap → push another `AnimeDetailPage`. First 4 rows shown, chevron reveals the rest.
+- **Characters & Voice Actors section** (below Related Entries, `_CharactersSection`): divider + centered heading. Horizontally scrollable row of compact entries. Each entry is two stacked 3:4 tiles:
   - **Character tile** — image with name + role ("Main"/"Supporting") overlaid at the bottom on a dark gradient. Name uses `FontWeight.w500` (deliberately lighter than the section heading).
   - **Voice-actor tile** below — image with VA name only. **Japanese only**, no fallback; if a character has no JP VA the slot is empty.
-  - Sorted by character `favorites` desc (returned by Jikan).
-- **Music section** (below Characters): divider + centered "Music" heading. Two columns: **Opening** (left) and **Ending** (right), each a stacked list of theme strings as Jikan formats them (`1: "Title" by Artist (eps 1-12)`). Section is hidden entirely when both arrays are empty (typical for movies / single OVAs). Strings are kept as-is — MAL's own numbering and "eps X-Y" qualifiers come through.
+  - **Sort**: role first (Main → Supporting → other), then `favorites` desc within each group. The order matches MAL's mobile UI convention of leading with the main cast.
+- **Music section** (below Characters, `_MusicSection`): divider + centered "Music" heading. Rendered as a **Flutter `Table`** so the Opening and Ending columns are row-aligned — opening #N and ending #N share the same vertical band even if one wraps to more lines than the other. Each column shows the first 2 entries; a chevron appears when either side has more and toggles both columns together. Section is hidden entirely when both arrays are empty (typical for movies / single OVAs).
+- **Recommendations section** (below Music, `_RelatedSection`): divider + centered heading. **Horizontal scrolling row** of 100-wide `_PosterTile` cards — image with title + `N user(s)` overlaid at the bottom. Tap → push another `AnimeDetailPage`. No expand chevron; the row scrolls. User-submitted recs only — MAL's "AutoRec" tab isn't exposed via any API and would need HTML scraping.
 - All section chevrons share the same compact style so spacing between sections is tight and consistent.
 - AppBar shows heart and share icons as **stubs** (no logic wired). Heart needs OAuth write to toggle favorites; share needs `share_plus` package.
 - **No Favorites count**: MAL API doesn't expose `num_favorites`. Could be scraped from the web profile later.
