@@ -21,6 +21,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
   late Future<AnimeDetail> _future;
   late Future<List<AnimeCharacter>> _charactersFuture;
   late Future<({List<String> openings, List<String> endings})> _themesFuture;
+  late Future<ScoreStats> _scoreStatsFuture;
   bool _synopsisExpanded = false;
   bool _infoExpanded = false;
   bool _relatedExpanded = false;
@@ -32,6 +33,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
     _future = MalApi.getAnimeDetail(widget.id);
     _charactersFuture = MalApi.getAnimeCharacters(widget.id);
     _themesFuture = MalApi.getAnimeThemes(widget.id);
+    _scoreStatsFuture = MalApi.getAnimeScoreStats(widget.id);
   }
 
   @override
@@ -74,6 +76,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
             detail: snap.data!,
             charactersFuture: _charactersFuture,
             themesFuture: _themesFuture,
+            scoreStatsFuture: _scoreStatsFuture,
             synopsisExpanded: _synopsisExpanded,
             infoExpanded: _infoExpanded,
             musicExpanded: _musicExpanded,
@@ -98,6 +101,7 @@ class _DetailBody extends StatelessWidget {
     required this.detail,
     required this.charactersFuture,
     required this.themesFuture,
+    required this.scoreStatsFuture,
     required this.synopsisExpanded,
     required this.infoExpanded,
     required this.musicExpanded,
@@ -111,6 +115,7 @@ class _DetailBody extends StatelessWidget {
   final AnimeDetail detail;
   final Future<List<AnimeCharacter>> charactersFuture;
   final Future<({List<String> openings, List<String> endings})> themesFuture;
+  final Future<ScoreStats> scoreStatsFuture;
   final bool synopsisExpanded;
   final bool infoExpanded;
   final bool musicExpanded;
@@ -216,6 +221,7 @@ class _DetailBody extends StatelessWidget {
             title: 'Recommendations',
             items: detail.recommendations,
           ),
+          _ScoreStatsSection(future: scoreStatsFuture),
           const SizedBox(height: 32),
         ],
       ),
@@ -1107,5 +1113,147 @@ class _ThemeTable extends StatelessWidget {
       defaultVerticalAlignment: TableCellVerticalAlignment.top,
       children: rows,
     );
+  }
+}
+
+class _ScoreStatsSection extends StatelessWidget {
+  const _ScoreStatsSection({required this.future});
+  final Future<ScoreStats> future;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<ScoreStats>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const SizedBox.shrink();
+        }
+        if (snap.hasError || snap.data == null) return const SizedBox.shrink();
+        final stats = snap.data!;
+        if (stats.buckets.isEmpty) return const SizedBox.shrink();
+        final maxPct = stats.buckets
+            .map((b) => b.percentage)
+            .fold<double>(0, (a, b) => b > a ? b : a);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: Color(0xFF1F1F1F)),
+            const SizedBox(height: 12),
+            const Center(
+              child: Text(
+                'Score Stats',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                '${_thousands(stats.totalVotes)} scored users',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  for (final b in stats.buckets)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: _ScoreRow(bucket: b, maxPercentage: maxPct),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  static String _thousands(int n) {
+    final s = n.toString();
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+      buf.write(s[i]);
+    }
+    return buf.toString();
+  }
+}
+
+class _ScoreRow extends StatelessWidget {
+  const _ScoreRow({required this.bucket, required this.maxPercentage});
+  final ScoreBucket bucket;
+  final double maxPercentage;
+
+  @override
+  Widget build(BuildContext context) {
+    // Scale the bar so the largest bucket fills the row, not the literal
+    // percentage (otherwise the bars look tiny for evenly-rated shows).
+    final width = maxPercentage <= 0
+        ? 0.0
+        : (bucket.percentage / maxPercentage).clamp(0.0, 1.0).toDouble();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 18,
+          child: Text(
+            '${bucket.score}',
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Stack(
+            children: [
+              Container(
+                height: 14,
+                color: const Color(0xFF1A1A1A),
+              ),
+              FractionallySizedBox(
+                widthFactor: width,
+                child: Container(
+                  height: 14,
+                  color: const Color(0xFF3B5998),
+                ),
+              ),
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '${bucket.percentage.toStringAsFixed(1)}% (${_thousands(bucket.votes)} votes)',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _thousands(int n) {
+    final s = n.toString();
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+      buf.write(s[i]);
+    }
+    return buf.toString();
   }
 }

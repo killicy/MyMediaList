@@ -15,6 +15,20 @@ class MalApi {
     return {'Authorization': 'Bearer $token'};
   }
 
+  /// Per-score vote breakdown for an anime, via Jikan. The MAL v2 API only
+  /// exposes the *list status* distribution under `statistics`, not the
+  /// score histogram shown on the website's stats page.
+  static Future<ScoreStats> getAnimeScoreStats(int id) async {
+    final uri = Uri.parse('https://api.jikan.moe/v4/anime/$id/statistics');
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      throw Exception('Jikan ${res.statusCode}: ${res.body}');
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = body['data'] as Map<String, dynamic>;
+    return ScoreStats.fromJson(data);
+  }
+
   /// Opening and ending theme song strings. Jikan's `/anime/{id}/full`
   /// returns them pre-formatted (e.g. `1: "Title" by Artist (eps 1-12)`).
   /// MAL's v2 API does not expose music themes.
@@ -282,6 +296,42 @@ class AnimeDetail {
     final mins = (avgEpisodeSeconds! / 60).round();
     return '$mins min';
   }
+}
+
+class ScoreStats {
+  /// Buckets sorted descending by score (10..1).
+  final List<ScoreBucket> buckets;
+
+  ScoreStats({required this.buckets});
+
+  factory ScoreStats.fromJson(Map<String, dynamic> j) {
+    final scores = (j['scores'] as List? ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(ScoreBucket.fromJson)
+        .toList()
+      ..sort((a, b) => b.score.compareTo(a.score));
+    return ScoreStats(buckets: scores);
+  }
+
+  int get totalVotes => buckets.fold(0, (sum, b) => sum + b.votes);
+}
+
+class ScoreBucket {
+  final int score;
+  final int votes;
+  final double percentage;
+
+  ScoreBucket({
+    required this.score,
+    required this.votes,
+    required this.percentage,
+  });
+
+  factory ScoreBucket.fromJson(Map<String, dynamic> j) => ScoreBucket(
+        score: (j['score'] as num).toInt(),
+        votes: (j['votes'] as num).toInt(),
+        percentage: (j['percentage'] as num).toDouble(),
+      );
 }
 
 class AnimeCharacter {

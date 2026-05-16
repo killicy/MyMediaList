@@ -67,6 +67,7 @@ Username is hardcoded for now; the plan is to move to a settings screen / persis
   - `GET /v2/users/@me?fields=...,anime_statistics` (bearer) — Profile page
   - `GET https://api.jikan.moe/v4/anime/{id}/characters` (no auth, Jikan) — Characters & Voice Actors section
   - `GET https://api.jikan.moe/v4/anime/{id}/full` (no auth, Jikan) — Music section (opening/ending themes). The `theme` field is only present on the `/full` endpoint, not the base `/anime/{id}`.
+  - `GET https://api.jikan.moe/v4/anime/{id}/statistics` (no auth, Jikan) — Score Stats section (per-score vote histogram).
 - **`nsfw=true` matters**: the API hides NSFW-tagged entries by default. Without it, list counts disagree with the MAL web UI.
 - **Jikan caveats**: free third-party service with rate limits (~3 req/sec, 60/min). Returns `favorites` per character and a `voice_actors` array. We sort by `favorites` desc and pick the **Japanese** VA only (no fallback). One call fires per detail-page load, in parallel with the main `getAnimeDetail`.
 
@@ -127,6 +128,7 @@ Opened from list rows or search results. Fetches via `MalApi.getAnimeDetail`.
   - **Sort**: role first (Main → Supporting → other), then `favorites` desc within each group. The order matches MAL's mobile UI convention of leading with the main cast.
 - **Music section** (below Characters, `_MusicSection`): divider + centered "Music" heading. Rendered as a **Flutter `Table`** so the Opening and Ending columns are row-aligned — opening #N and ending #N share the same vertical band even if one wraps to more lines than the other. Each column shows the first 2 entries; a chevron appears when either side has more and toggles both columns together. Section is hidden entirely when both arrays are empty (typical for movies / single OVAs).
 - **Recommendations section** (below Music, `_RelatedSection`): divider + centered heading. **Horizontal scrolling row** of 100-wide `_PosterTile` cards — image with title + `N user(s)` overlaid at the bottom. Tap → push another `AnimeDetailPage`. No expand chevron; the row scrolls. User-submitted recs only — MAL's "AutoRec" tab isn't exposed via any API and would need HTML scraping.
+- **Score Stats section** (bottom of page, `_ScoreStatsSection`): divider + centered heading + total scored-user subtitle (sum of `votes` across buckets). Rows 10 → 1, each a horizontal bar with `pct% (votes votes)` printed on top. Bar widths are scaled to the **largest bucket**, not literal 0-100% — keeps the visualization legible when no single score breaks 40%. Data from Jikan's `/v4/anime/{id}/statistics`; MAL's v2 only exposes list-status counts (watching/completed/etc.), not the score histogram.
 - All section chevrons share the same compact style so spacing between sections is tight and consistent.
 - AppBar shows heart and share icons as **stubs** (no logic wired). Heart needs OAuth write to toggle favorites; share needs `share_plus` package.
 - **No Favorites count**: MAL API doesn't expose `num_favorites`. Could be scraped from the web profile later.
@@ -170,7 +172,7 @@ Home / Movies / TV / Schedule are `_PlaceholderPage` centered-text stubs.
 - `Image.network` everywhere with no caching → consider `cached_network_image` once the list grows.
 - No list refresh action — cache is per-process. Add a refresh button to `_ListHeader` if data freshness matters.
 - Detail page **Favorites** is omitted (API doesn't expose `num_favorites`). Would need profile-page scraping.
-- **Jikan dependency** for characters/VAs **and** music themes is the only third-party data source. Two Jikan calls fire per detail-page load (`/characters` and `/full`). If Jikan goes down or rate-limits (3/s, 60/min), the sections just don't render — errors are swallowed in their respective FutureBuilders. Consider caching or merging into one `/full` call (themes already use `/full`, so it could absorb characters too) if it ever becomes a sore spot.
+- **Jikan dependency** for characters/VAs, music themes, **and** score stats is the only third-party data source. Three Jikan calls fire per detail-page load (`/characters`, `/full`, `/statistics`). If Jikan goes down or rate-limits (3/s, 60/min), the sections just don't render — errors are swallowed in their respective FutureBuilders. Consider caching or merging into one `/full` call (themes already use `/full`, so it could absorb characters and stats too) if it ever becomes a sore spot.
 - Search page has **no filters** (genre/type/year/rating) — MAL search supports a few via the API, and many more only via the web UI. Add as the use case demands.
 - **Manga stats** require scraping (not in API). Profile page notes this in the UI.
 
