@@ -15,6 +15,27 @@ class MalApi {
     return {'Authorization': 'Bearer $token'};
   }
 
+  /// Opening and ending theme song strings. Jikan's `/anime/{id}/full`
+  /// returns them pre-formatted (e.g. `1: "Title" by Artist (eps 1-12)`).
+  /// MAL's v2 API does not expose music themes.
+  static Future<({List<String> openings, List<String> endings})>
+      getAnimeThemes(int id) async {
+    final uri = Uri.parse('https://api.jikan.moe/v4/anime/$id/full');
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      throw Exception('Jikan ${res.statusCode}: ${res.body}');
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = body['data'] as Map<String, dynamic>;
+    final theme = data['theme'] as Map<String, dynamic>?;
+    List<String> pull(String key) {
+      final raw = theme?[key];
+      if (raw is! List) return const [];
+      return raw.whereType<String>().toList();
+    }
+    return (openings: pull('openings'), endings: pull('endings'));
+  }
+
   /// Fetches characters via Jikan (free MAL proxy). MAL's official v2 API
   /// does not expose characters; Jikan does. Sorted by character favorites
   /// (highest first).

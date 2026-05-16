@@ -66,6 +66,7 @@ Username is hardcoded for now; the plan is to move to a settings screen / persis
   - `GET /v2/users/{user}/animelist?status=...&fields=...&sort=list_updated_at&limit=1000&nsfw=true` (client-id) — Anime tab. Follows `paging.next` to handle lists >1000 entries.
   - `GET /v2/users/@me?fields=...,anime_statistics` (bearer) — Profile page
   - `GET https://api.jikan.moe/v4/anime/{id}/characters` (no auth, Jikan) — Characters & Voice Actors section
+  - `GET https://api.jikan.moe/v4/anime/{id}/full` (no auth, Jikan) — Music section (opening/ending themes). The `theme` field is only present on the `/full` endpoint, not the base `/anime/{id}`.
 - **`nsfw=true` matters**: the API hides NSFW-tagged entries by default. Without it, list counts disagree with the MAL web UI.
 - **Jikan caveats**: free third-party service with rate limits (~3 req/sec, 60/min). Returns `favorites` per character and a `voice_actors` array. We sort by `favorites` desc and pick the **Japanese** VA only (no fallback). One call fires per detail-page load, in parallel with the main `getAnimeDetail`.
 
@@ -124,6 +125,7 @@ Opened from list rows or search results. Fetches via `MalApi.getAnimeDetail`.
   - **Character tile** — image with name + role ("Main"/"Supporting") overlaid at the bottom on a dark gradient. Name uses `FontWeight.w500` (deliberately lighter than the section heading).
   - **Voice-actor tile** below — image with VA name only. **Japanese only**, no fallback; if a character has no JP VA the slot is empty.
   - Sorted by character `favorites` desc (returned by Jikan).
+- **Music section** (below Characters): divider + centered "Music" heading. Two columns: **Opening** (left) and **Ending** (right), each a stacked list of theme strings as Jikan formats them (`1: "Title" by Artist (eps 1-12)`). Section is hidden entirely when both arrays are empty (typical for movies / single OVAs). Strings are kept as-is — MAL's own numbering and "eps X-Y" qualifiers come through.
 - All section chevrons share the same compact style so spacing between sections is tight and consistent.
 - AppBar shows heart and share icons as **stubs** (no logic wired). Heart needs OAuth write to toggle favorites; share needs `share_plus` package.
 - **No Favorites count**: MAL API doesn't expose `num_favorites`. Could be scraped from the web profile later.
@@ -167,7 +169,7 @@ Home / Movies / TV / Schedule are `_PlaceholderPage` centered-text stubs.
 - `Image.network` everywhere with no caching → consider `cached_network_image` once the list grows.
 - No list refresh action — cache is per-process. Add a refresh button to `_ListHeader` if data freshness matters.
 - Detail page **Favorites** is omitted (API doesn't expose `num_favorites`). Would need profile-page scraping.
-- **Jikan dependency** for characters/VAs is the only third-party data source. If Jikan goes down or rate-limits, the section just doesn't render (errors are swallowed in `_CharactersSection`). Consider caching or a "More cast" link if it ever becomes a sore spot.
+- **Jikan dependency** for characters/VAs **and** music themes is the only third-party data source. Two Jikan calls fire per detail-page load (`/characters` and `/full`). If Jikan goes down or rate-limits (3/s, 60/min), the sections just don't render — errors are swallowed in their respective FutureBuilders. Consider caching or merging into one `/full` call (themes already use `/full`, so it could absorb characters too) if it ever becomes a sore spot.
 - Search page has **no filters** (genre/type/year/rating) — MAL search supports a few via the API, and many more only via the web UI. Add as the use case demands.
 - **Manga stats** require scraping (not in API). Profile page notes this in the UI.
 

@@ -20,6 +20,7 @@ class AnimeDetailPage extends StatefulWidget {
 class _AnimeDetailPageState extends State<AnimeDetailPage> {
   late Future<AnimeDetail> _future;
   late Future<List<AnimeCharacter>> _charactersFuture;
+  late Future<({List<String> openings, List<String> endings})> _themesFuture;
   bool _synopsisExpanded = false;
   bool _infoExpanded = false;
   bool _relatedExpanded = false;
@@ -29,6 +30,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
     super.initState();
     _future = MalApi.getAnimeDetail(widget.id);
     _charactersFuture = MalApi.getAnimeCharacters(widget.id);
+    _themesFuture = MalApi.getAnimeThemes(widget.id);
   }
 
   @override
@@ -70,6 +72,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
           return _DetailBody(
             detail: snap.data!,
             charactersFuture: _charactersFuture,
+            themesFuture: _themesFuture,
             synopsisExpanded: _synopsisExpanded,
             infoExpanded: _infoExpanded,
             relatedExpanded: _relatedExpanded,
@@ -90,6 +93,7 @@ class _DetailBody extends StatelessWidget {
   const _DetailBody({
     required this.detail,
     required this.charactersFuture,
+    required this.themesFuture,
     required this.synopsisExpanded,
     required this.infoExpanded,
     required this.relatedExpanded,
@@ -100,6 +104,7 @@ class _DetailBody extends StatelessWidget {
 
   final AnimeDetail detail;
   final Future<List<AnimeCharacter>> charactersFuture;
+  final Future<({List<String> openings, List<String> endings})> themesFuture;
   final bool synopsisExpanded;
   final bool infoExpanded;
   final bool relatedExpanded;
@@ -194,6 +199,7 @@ class _DetailBody extends StatelessWidget {
             onToggle: onToggleRelated,
           ),
           _CharactersSection(future: charactersFuture),
+          _MusicSection(future: themesFuture),
           const SizedBox(height: 32),
         ],
       ),
@@ -864,6 +870,99 @@ class _PosterTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MusicSection extends StatelessWidget {
+  const _MusicSection({required this.future});
+  final Future<({List<String> openings, List<String> endings})> future;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<({List<String> openings, List<String> endings})>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const SizedBox.shrink();
+        }
+        if (snap.hasError || snap.data == null) return const SizedBox.shrink();
+        final openings = snap.data!.openings;
+        final endings = snap.data!.endings;
+        if (openings.isEmpty && endings.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: Color(0xFF1F1F1F)),
+            const SizedBox(height: 12),
+            const Center(
+              child: Text(
+                'Music',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: _ThemeColumn(title: 'Opening', items: openings)),
+                  const SizedBox(width: 16),
+                  Expanded(child: _ThemeColumn(title: 'Ending', items: endings)),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ThemeColumn extends StatelessWidget {
+  const _ThemeColumn({required this.title, required this.items});
+  final String title;
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        if (items.isEmpty)
+          const Text(
+            '—',
+            style: TextStyle(color: Colors.white38, fontSize: 12),
+          )
+        else
+          for (final t in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                t,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  height: 1.3,
+                ),
+              ),
+            ),
+      ],
     );
   }
 }
