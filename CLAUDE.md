@@ -93,15 +93,17 @@ The `Icons.animation` glyph is the closest Material icon to "anime" — swap to 
 Models MAL's "My List" screen for the hardcoded user.
 
 Layout (Column, top to bottom):
-1. **Status TabBar** — horizontally scrollable, `isScrollable: true`, white underline indicator. Tabs: All / Watching / Completed / On Hold / Dropped / Plan to Watch. Defaults to Watching.
-2. **Pinned `_ListHeader`** — stays put while the list scrolls. Shows `N Entries` (blue, with bar-chart icon) centered, sort `Icons.tune` on the right. Tight 2px vertical padding so it doesn't dominate.
-3. **List** — `ListView.separated` of `_AnimeRow`. Row content: 90×120 poster, title (max 2 lines), `TV · 2024 fall` subtitle, green progress bar, and a bottom row with **★ user score on the left** (only when `list_status.score > 0`) and `watched / total ep` on the right. Row vertical padding is 2px — tight by design. Tap routes to `AnimeDetailPage`.
+1. **Status TabBar** — horizontally scrollable, `isScrollable: true`, white underline indicator. Tabs: All / Watching / Completed / On Hold / Dropped / Plan to Watch. Defaults to Watching. Thin 1px grey divider underneath (`dividerColor`/`dividerHeight`) that lightens from `#1F1F1F` → `#2E2E2E` when the list is scrolled under.
+2. **Pinned `_ListHeader`** — stays put while the list scrolls. Rendered as a `Stack` so `N Entries` (blue, with bar-chart icon) is **dead-center on the screen** regardless of side buttons. Left: refresh `IconButton` (clears cache for the active tab and refetches). Right: type-filter `PopupMenuButton` (`Icons.filter_list`, blue when a non-`All` filter is active) followed by the sort `PopupMenuButton` (`Icons.tune`). Tight 2px vertical padding.
+3. **List** — `ListView.separated` of `_AnimeRow`. Row content: 90×120 poster, title (max 2 lines), `TV · 2024 fall` subtitle, progress bar (color from `list_status.status`, see below), and a bottom row with **★ user score on the left** (only when `list_status.score > 0`) and `watched / total ep` on the right. Row vertical padding is 2px — tight by design. Tap routes to `AnimeDetailPage`.
 
 Behaviour:
-- **Per-status cache**: `Map<int, Future<List<AnimeListEntry>>>` keyed by tab index. Switching tabs is instant after first load.
-- **Sort** (`ListSort` enum) is applied client-side via `_sorted(items)` so switching sort is instant. Options in menu order: **Alphabetical / Your Score / Score / Watched Episodes / Air Start Date / Last Updated**. `Your Score` is `list_status.score` (user's personal rating); `Score` is `anime.mean` (MAL community mean, fetched via the `mean` field on the list query). Server-side `sort=list_updated_at` is what we ask for, then re-sorted locally per the user's selection.
-- **Scrolled-under tint**: a `NotificationListener<ScrollNotification>` flips `_scrolledUnder` whenever the list's `metrics.pixels > 0`. Both the TabBar container and `_ListHeader` swap background to `#1A1A1A` while scrolled, back to `#111111` at the top — mirrors the AppBar's surface-tint elevation feel.
-- **No pull-to-refresh** (intentionally removed per user request). Cache only invalidates on app restart; add a refresh button in `_ListHeader` if needed.
+- **Per-status cache**: `Map<int, Future<List<AnimeListEntry>>>` keyed by tab index. Switching tabs is instant after first load. The refresh button (`_refresh`) removes the active tab's cache entry and re-fetches.
+- **Sort** (`ListSort` enum) is applied client-side via `_filteredAndSorted(items)` so switching sort is instant. Options in menu order: **Alphabetical / Your Score / Score / Watched Episodes / Air Start Date / Last Updated**. `Your Score` is `list_status.score` (user's personal rating); `Score` is `anime.mean` (MAL community mean, fetched via the `mean` field on the list query). Server-side `sort=list_updated_at` is what we ask for, then re-sorted locally per the user's selection.
+- **Type filter** (`TypeFilter` enum) is applied before sort, also client-side. Options: All Types / TV / Movie / OVA / ONA / Special / Music. The header's `N Entries` count reflects the filtered total.
+- **Progress-bar color** keys off `list_status.status` (so even on the All tab each row's bar reflects its own status): watching → green `#49C26B`, completed → blue `#2D7BE5`, on_hold → golden `#E5B72D`, dropped → rust `#B7410E`, plan_to_watch → grey `#888888`. Helper: `_statusColor(String?)`.
+- **Scrolled-under tint**: a `NotificationListener<ScrollNotification>` flips `_scrolledUnder` whenever the list's `metrics.pixels > 0`. The TabBar container, the TabBar divider, and `_ListHeader` all darken slightly while scrolled — mirrors the AppBar's surface-tint elevation feel.
+- **No pull-to-refresh** (intentionally removed per user request). Refresh is the `_ListHeader` button instead.
 - **Overscroll stretch is disabled** via `ScrollConfiguration(overscroll: false)` + `ClampingScrollPhysics` — same convention used throughout.
 
 ### Detail page (`AnimeDetailPage`)

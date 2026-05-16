@@ -231,6 +231,31 @@ extension on ListSort {
       };
 }
 
+enum TypeFilter { all, tv, movie, ova, ona, special, music }
+
+extension on TypeFilter {
+  String get label => switch (this) {
+        TypeFilter.all => 'All Types',
+        TypeFilter.tv => 'TV',
+        TypeFilter.movie => 'Movie',
+        TypeFilter.ova => 'OVA',
+        TypeFilter.ona => 'ONA',
+        TypeFilter.special => 'Special',
+        TypeFilter.music => 'Music',
+      };
+
+  /// Raw API media_type value. `null` means "no filter".
+  String? get apiValue => switch (this) {
+        TypeFilter.all => null,
+        TypeFilter.tv => 'tv',
+        TypeFilter.movie => 'movie',
+        TypeFilter.ova => 'ova',
+        TypeFilter.ona => 'ona',
+        TypeFilter.special => 'special',
+        TypeFilter.music => 'music',
+      };
+}
+
 class _AnimeListPageState extends State<AnimeListPage>
     with SingleTickerProviderStateMixin {
   static const _statuses = <(String, String?)>[
@@ -247,6 +272,7 @@ class _AnimeListPageState extends State<AnimeListPage>
   final Map<int, Future<List<AnimeListEntry>>> _cache = {};
   int _activeIndex = _initialIndex;
   ListSort _sort = ListSort.lastUpdated;
+  TypeFilter _typeFilter = TypeFilter.all;
   bool _scrolledUnder = false;
 
   bool _onScroll(ScrollNotification n) {
@@ -257,8 +283,12 @@ class _AnimeListPageState extends State<AnimeListPage>
     return false;
   }
 
-  List<AnimeListEntry> _sorted(List<AnimeListEntry> items) {
-    final out = [...items];
+  List<AnimeListEntry> _filteredAndSorted(List<AnimeListEntry> items) {
+    final filter = _typeFilter.apiValue;
+    final out = [
+      for (final e in items)
+        if (filter == null || e.mediaType == filter) e,
+    ];
     switch (_sort) {
       case ListSort.alphabetical:
         out.sort((a, b) =>
@@ -341,7 +371,10 @@ class _AnimeListPageState extends State<AnimeListPage>
               indicatorColor: Colors.white,
               indicatorSize: TabBarIndicatorSize.label,
               indicatorWeight: 2,
-              dividerColor: Colors.transparent,
+              dividerColor: _scrolledUnder
+                  ? const Color(0xFF2E2E2E)
+                  : const Color(0xFF1F1F1F),
+              dividerHeight: 1,
               labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               unselectedLabelStyle: const TextStyle(fontSize: 15),
               tabs: [for (final s in _statuses) Tab(text: s.$1)],
@@ -365,13 +398,17 @@ class _AnimeListPageState extends State<AnimeListPage>
                     ),
                   );
                 }
-                final items = _sorted(snap.data ?? const []);
+                final items = _filteredAndSorted(snap.data ?? const []);
                 return Column(
                   children: [
                     _ListHeader(
                       count: items.length,
                       sort: _sort,
                       onSortChanged: (v) => setState(() => _sort = v),
+                      typeFilter: _typeFilter,
+                      onTypeFilterChanged: (v) =>
+                          setState(() => _typeFilter = v),
+                      onRefresh: _refresh,
                       scrolledUnder: _scrolledUnder,
                     ),
                     Expanded(
@@ -398,6 +435,23 @@ class _AnimeListPageState extends State<AnimeListPage>
         ],
       ),
     );
+  }
+}
+
+Color _statusColor(String? status) {
+  switch (status) {
+    case 'watching':
+      return const Color(0xFF49C26B); // green
+    case 'completed':
+      return const Color(0xFF2D7BE5); // blue
+    case 'on_hold':
+      return const Color(0xFFE5B72D); // golden
+    case 'dropped':
+      return const Color(0xFFB7410E); // rust
+    case 'plan_to_watch':
+      return const Color(0xFF888888); // grey
+    default:
+      return const Color(0xFF49C26B);
   }
 }
 
@@ -462,7 +516,7 @@ class _AnimeRow extends StatelessWidget {
                         minHeight: 6,
                         backgroundColor: const Color(0xFF2A2A2A),
                         valueColor:
-                            const AlwaysStoppedAnimation(Color(0xFF49C26B)),
+                            AlwaysStoppedAnimation(_statusColor(entry.status)),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -509,12 +563,18 @@ class _ListHeader extends StatelessWidget {
     required this.count,
     required this.sort,
     required this.onSortChanged,
+    required this.typeFilter,
+    required this.onTypeFilterChanged,
+    required this.onRefresh,
     required this.scrolledUnder,
   });
 
   final int count;
   final ListSort sort;
   final ValueChanged<ListSort> onSortChanged;
+  final TypeFilter typeFilter;
+  final ValueChanged<TypeFilter> onTypeFilterChanged;
+  final VoidCallback onRefresh;
   final bool scrolledUnder;
 
   @override
@@ -523,27 +583,69 @@ class _ListHeader extends StatelessWidget {
       color: scrolledUnder ? const Color(0xFF1A1A1A) : const Color(0xFF111111),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Row(
+        child: Stack(
+          alignment: Alignment.center,
           children: [
-            const SizedBox(width: 48),
-            Expanded(
-              child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.bar_chart,
-                        color: Colors.blueAccent, size: 18),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$count Entries',
-                      style: const TextStyle(
-                        color: Colors.blueAccent,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+            // Center the count on the screen regardless of left/right buttons.
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.bar_chart,
+                    color: Colors.blueAccent, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  '$count Entries',
+                  style: const TextStyle(
+                    color: Colors.blueAccent,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+              ],
+            ),
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Refresh',
+                  icon: const Icon(Icons.refresh, color: Colors.white70),
+                  onPressed: onRefresh,
+                ),
+                const Spacer(),
+                PopupMenuButton<TypeFilter>(
+              tooltip: 'Filter by type',
+              icon: Icon(
+                Icons.filter_list,
+                color: typeFilter == TypeFilter.all
+                    ? Colors.white70
+                    : Colors.blueAccent,
               ),
+              color: const Color(0xFF1E1E1E),
+              initialValue: typeFilter,
+              onSelected: onTypeFilterChanged,
+              itemBuilder: (_) => [
+                for (final t in TypeFilter.values)
+                  PopupMenuItem<TypeFilter>(
+                    value: t,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            t.label,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        Icon(
+                          typeFilter == t
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                          color: typeFilter == t
+                              ? Colors.blueAccent
+                              : Colors.white38,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
             PopupMenuButton<ListSort>(
               tooltip: 'Sort',
@@ -574,6 +676,8 @@ class _ListHeader extends StatelessWidget {
                       ],
                     ),
                   ),
+              ],
+            ),
               ],
             ),
           ],

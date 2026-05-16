@@ -556,6 +556,7 @@ class AnimeListEntry {
   final int score;
   final DateTime? updatedAt;
   final double? meanScore; // MAL community mean
+  final String? status; // watching / completed / on_hold / dropped / plan_to_watch
 
   AnimeListEntry({
     required this.id,
@@ -569,6 +570,7 @@ class AnimeListEntry {
     required this.score,
     this.updatedAt,
     this.meanScore,
+    this.status,
   });
 
   factory AnimeListEntry.fromJson(Map<String, dynamic> j) {
@@ -587,6 +589,7 @@ class AnimeListEntry {
       score: (status['score'] as int?) ?? 0,
       updatedAt: DateTime.tryParse((status['updated_at'] as String?) ?? ''),
       meanScore: (node['mean'] as num?)?.toDouble(),
+      status: status['status'] as String?,
     );
   }
 
