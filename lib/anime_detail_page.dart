@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'mal_api.dart';
 
 class AnimeDetailPage extends StatefulWidget {
@@ -22,6 +23,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
   late Future<List<AnimeCharacter>> _charactersFuture;
   late Future<({List<String> openings, List<String> endings})> _themesFuture;
   late Future<ScoreStats> _scoreStatsFuture;
+  late Future<List<StreamingPlatform>> _streamingFuture;
   bool _synopsisExpanded = false;
   bool _infoExpanded = false;
   bool _relatedExpanded = false;
@@ -34,6 +36,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
     _charactersFuture = MalApi.getAnimeCharacters(widget.id);
     _themesFuture = MalApi.getAnimeThemes(widget.id);
     _scoreStatsFuture = MalApi.getAnimeScoreStats(widget.id);
+    _streamingFuture = MalApi.getAnimeStreaming(widget.id);
   }
 
   @override
@@ -77,6 +80,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
             charactersFuture: _charactersFuture,
             themesFuture: _themesFuture,
             scoreStatsFuture: _scoreStatsFuture,
+            streamingFuture: _streamingFuture,
             synopsisExpanded: _synopsisExpanded,
             infoExpanded: _infoExpanded,
             musicExpanded: _musicExpanded,
@@ -102,6 +106,7 @@ class _DetailBody extends StatelessWidget {
     required this.charactersFuture,
     required this.themesFuture,
     required this.scoreStatsFuture,
+    required this.streamingFuture,
     required this.synopsisExpanded,
     required this.infoExpanded,
     required this.musicExpanded,
@@ -116,6 +121,7 @@ class _DetailBody extends StatelessWidget {
   final Future<List<AnimeCharacter>> charactersFuture;
   final Future<({List<String> openings, List<String> endings})> themesFuture;
   final Future<ScoreStats> scoreStatsFuture;
+  final Future<List<StreamingPlatform>> streamingFuture;
   final bool synopsisExpanded;
   final bool infoExpanded;
   final bool musicExpanded;
@@ -222,6 +228,7 @@ class _DetailBody extends StatelessWidget {
             items: detail.recommendations,
           ),
           _ScoreStatsSection(future: scoreStatsFuture),
+          _PlatformsSection(future: streamingFuture),
           const SizedBox(height: 32),
         ],
       ),
@@ -1215,13 +1222,13 @@ class _ScoreRow extends StatelessWidget {
           child: Stack(
             children: [
               Container(
-                height: 14,
+                height: 20,
                 color: const Color(0xFF1A1A1A),
               ),
               FractionallySizedBox(
                 widthFactor: width,
                 child: Container(
-                  height: 14,
+                  height: 20,
                   color: const Color(0xFF3B5998),
                 ),
               ),
@@ -1234,7 +1241,8 @@ class _ScoreRow extends StatelessWidget {
                       '${bucket.percentage.toStringAsFixed(1)}% (${_thousands(bucket.votes)} votes)',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 11,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -1255,5 +1263,97 @@ class _ScoreRow extends StatelessWidget {
       buf.write(s[i]);
     }
     return buf.toString();
+  }
+}
+
+class _PlatformsSection extends StatelessWidget {
+  const _PlatformsSection({required this.future});
+  final Future<List<StreamingPlatform>> future;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<StreamingPlatform>>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const SizedBox.shrink();
+        }
+        if (snap.hasError || snap.data == null) return const SizedBox.shrink();
+        final items = snap.data!.where((p) => p.name.isNotEmpty).toList();
+        if (items.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: Color(0xFF1F1F1F)),
+            const SizedBox(height: 12),
+            const Center(
+              child: Text(
+                'Platforms',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final p in items) _PlatformChip(platform: p),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PlatformChip extends StatelessWidget {
+  const _PlatformChip({required this.platform});
+  final StreamingPlatform platform;
+
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.tryParse(platform.url);
+    if (uri == null) return;
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open ${platform.name}')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF1E1E1E),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _open(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                platform.name,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.open_in_new,
+                  color: Colors.white54, size: 14),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

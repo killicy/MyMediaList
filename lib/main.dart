@@ -475,7 +475,7 @@ class _AnimeRow extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.fromLTRB(4, 2, 0, 2),
         child: SizedBox(
           height: 120,
           child: Row(

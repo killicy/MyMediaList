@@ -7,6 +7,33 @@ class MalApi {
   static const _base = 'https://api.myanimelist.net/v2';
   static const _headers = {'X-MAL-CLIENT-ID': malClientId};
 
+  // Per-anime caches for the four Jikan endpoints we hit on the detail page.
+  // Kept in memory for the session so revisiting a page doesn't re-fetch and
+  // doesn't bump us into Jikan's 3 req/sec rate limit. Failed futures are
+  // evicted so a 429 / network error doesn't poison the cache.
+  static final Map<int, Future<List<AnimeCharacter>>> _charactersCache = {};
+  static final Map<int, Future<
+      ({List<String> openings, List<String> endings})>> _themesCache = {};
+  static final Map<int, Future<ScoreStats>> _scoreStatsCache = {};
+  static final Map<int, Future<List<StreamingPlatform>>> _streamingCache = {};
+
+  static Future<T> _memo<T>(
+    Map<int, Future<T>> cache,
+    int id,
+    Future<T> Function() create,
+  ) async {
+    final cached = cache[id];
+    if (cached != null) return cached;
+    final f = create();
+    cache[id] = f;
+    try {
+      return await f;
+    } catch (e) {
+      cache.remove(id);
+      rethrow;
+    }
+  }
+
   static Future<Map<String, String>> _authHeaders() async {
     final token = await MalAuth.accessToken;
     if (token == null) {
@@ -15,10 +42,30 @@ class MalApi {
     return {'Authorization': 'Bearer $token'};
   }
 
+  /// Streaming platforms (Crunchyroll, Netflix, etc.) and their links.
+  /// MAL v2 doesn't expose this; Jikan does via `/anime/{id}/streaming`.
+  static Future<List<StreamingPlatform>> getAnimeStreaming(int id) =>
+      _memo(_streamingCache, id, () => _fetchAnimeStreaming(id));
+
+  static Future<List<StreamingPlatform>> _fetchAnimeStreaming(int id) async {
+    final uri = Uri.parse('https://api.jikan.moe/v4/anime/$id/streaming');
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      throw Exception('Jikan ${res.statusCode}: ${res.body}');
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = (body['data'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    return data.map(StreamingPlatform.fromJson).toList();
+  }
+
   /// Per-score vote breakdown for an anime, via Jikan. The MAL v2 API only
   /// exposes the *list status* distribution under `statistics`, not the
   /// score histogram shown on the website's stats page.
-  static Future<ScoreStats> getAnimeScoreStats(int id) async {
+  static Future<ScoreStats> getAnimeScoreStats(int id) =>
+      _memo(_scoreStatsCache, id, () => _fetchAnimeScoreStats(id));
+
+  static Future<ScoreStats> _fetchAnimeScoreStats(int id) async {
     final uri = Uri.parse('https://api.jikan.moe/v4/anime/$id/statistics');
     final res = await http.get(uri);
     if (res.statusCode != 200) {
@@ -33,7 +80,11 @@ class MalApi {
   /// returns them pre-formatted (e.g. `1: "Title" by Artist (eps 1-12)`).
   /// MAL's v2 API does not expose music themes.
   static Future<({List<String> openings, List<String> endings})>
-      getAnimeThemes(int id) async {
+      getAnimeThemes(int id) =>
+          _memo(_themesCache, id, () => _fetchAnimeThemes(id));
+
+  static Future<({List<String> openings, List<String> endings})>
+      _fetchAnimeThemes(int id) async {
     final uri = Uri.parse('https://api.jikan.moe/v4/anime/$id/full');
     final res = await http.get(uri);
     if (res.statusCode != 200) {
@@ -54,7 +105,10 @@ class MalApi {
   /// does not expose characters; Jikan does. Sorted by role (Main first,
   /// then Supporting, then everything else), and within each group by
   /// favorites desc.
-  static Future<List<AnimeCharacter>> getAnimeCharacters(int id) async {
+  static Future<List<AnimeCharacter>> getAnimeCharacters(int id) =>
+      _memo(_charactersCache, id, () => _fetchAnimeCharacters(id));
+
+  static Future<List<AnimeCharacter>> _fetchAnimeCharacters(int id) async {
     final uri = Uri.parse('https://api.jikan.moe/v4/anime/$id/characters');
     final res = await http.get(uri);
     if (res.statusCode != 200) {
@@ -108,6 +162,8 @@ class MalApi {
     final uri = Uri.parse('$_base/anime').replace(queryParameters: {
       'q': query,
       'limit': '$limit',
+      'fields':
+          'id,title,main_picture,media_type,num_episodes,start_season,mean,num_list_users',
     });
     final res = await http.get(uri, headers: _headers);
     if (res.statusCode != 200) {
@@ -296,6 +352,18 @@ class AnimeDetail {
     final mins = (avgEpisodeSeconds! / 60).round();
     return '$mins min';
   }
+}
+
+class StreamingPlatform {
+  final String name;
+  final String url;
+  StreamingPlatform({required this.name, required this.url});
+
+  factory StreamingPlatform.fromJson(Map<String, dynamic> j) =>
+      StreamingPlatform(
+        name: j['name'] as String? ?? '',
+        url: j['url'] as String? ?? '',
+      );
 }
 
 class ScoreStats {
@@ -534,14 +602,52 @@ class AnimeSummary {
   final int id;
   final String title;
   final String? pictureUrl;
+  final String? mediaType;
+  final int? numEpisodes;
+  final int? seasonYear;
+  final String? seasonName;
+  final double? mean;
+  final int? numListUsers;
 
-  AnimeSummary({required this.id, required this.title, this.pictureUrl});
+  AnimeSummary({
+    required this.id,
+    required this.title,
+    this.pictureUrl,
+    this.mediaType,
+    this.numEpisodes,
+    this.seasonYear,
+    this.seasonName,
+    this.mean,
+    this.numListUsers,
+  });
 
-  factory AnimeSummary.fromNode(Map<String, dynamic> n) => AnimeSummary(
-        id: n['id'] as int,
-        title: n['title'] as String,
-        pictureUrl: (n['main_picture'] as Map?)?['medium'] as String?,
-      );
+  factory AnimeSummary.fromNode(Map<String, dynamic> n) {
+    final season = n['start_season'] as Map<String, dynamic>?;
+    return AnimeSummary(
+      id: n['id'] as int,
+      title: n['title'] as String,
+      pictureUrl: (n['main_picture'] as Map?)?['medium'] as String?,
+      mediaType: n['media_type'] as String?,
+      numEpisodes: n['num_episodes'] as int?,
+      seasonYear: season?['year'] as int?,
+      seasonName: season?['season'] as String?,
+      mean: (n['mean'] as num?)?.toDouble(),
+      numListUsers: n['num_list_users'] as int?,
+    );
+  }
+
+  String? get mediaTypeLabel {
+    switch (mediaType) {
+      case 'tv': return 'TV';
+      case 'ova': return 'OVA';
+      case 'ona': return 'ONA';
+      case 'movie': return 'Movie';
+      case 'special': return 'Special';
+      case 'music': return 'Music';
+      case null: return null;
+      default: return mediaType!.toUpperCase();
+    }
+  }
 }
 
 class AnimeListEntry {

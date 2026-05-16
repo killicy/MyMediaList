@@ -68,6 +68,7 @@ Username is hardcoded for now; the plan is to move to a settings screen / persis
   - `GET https://api.jikan.moe/v4/anime/{id}/characters` (no auth, Jikan) — Characters & Voice Actors section
   - `GET https://api.jikan.moe/v4/anime/{id}/full` (no auth, Jikan) — Music section (opening/ending themes). The `theme` field is only present on the `/full` endpoint, not the base `/anime/{id}`.
   - `GET https://api.jikan.moe/v4/anime/{id}/statistics` (no auth, Jikan) — Score Stats section (per-score vote histogram).
+  - `GET https://api.jikan.moe/v4/anime/{id}/streaming` (no auth, Jikan) — Platforms section (streaming URLs).
 - **`nsfw=true` matters**: the API hides NSFW-tagged entries by default. Without it, list counts disagree with the MAL web UI.
 - **Jikan caveats**: free third-party service with rate limits (~3 req/sec, 60/min). Returns `favorites` per character and a `voice_actors` array. We sort by `favorites` desc and pick the **Japanese** VA only (no fallback). One call fires per detail-page load, in parallel with the main `getAnimeDetail`.
 
@@ -131,16 +132,20 @@ Opened from list rows or search results. Fetches via `MalApi.getAnimeDetail`.
   - **Sort**: role first (Main → Supporting → other), then `favorites` desc within each group. The order matches MAL's mobile UI convention of leading with the main cast.
 - **Music section** (below Characters, `_MusicSection`): divider + centered "Music" heading. Rendered as a **Flutter `Table`** so the Opening and Ending columns are row-aligned — opening #N and ending #N share the same vertical band even if one wraps to more lines than the other. Each column shows the first 2 entries; a chevron appears when either side has more and toggles both columns together. Section is hidden entirely when both arrays are empty (typical for movies / single OVAs).
 - **Recommendations section** (below Music, `_RelatedSection`): divider + centered heading. **Horizontal scrolling row** of 100-wide `_PosterTile` cards — image with title + `N user(s)` overlaid at the bottom. Tap → push another `AnimeDetailPage`. No expand chevron; the row scrolls. User-submitted recs only — MAL's "AutoRec" tab isn't exposed via any API and would need HTML scraping.
-- **Score Stats section** (bottom of page, `_ScoreStatsSection`): divider + centered heading + total scored-user subtitle (sum of `votes` across buckets). Rows 10 → 1, each a horizontal bar with `pct% (votes votes)` printed on top. Bar widths are scaled to the **largest bucket**, not literal 0-100% — keeps the visualization legible when no single score breaks 40%. Data from Jikan's `/v4/anime/{id}/statistics`; MAL's v2 only exposes list-status counts (watching/completed/etc.), not the score histogram.
+- **Score Stats section** (`_ScoreStatsSection`): divider + centered heading + total scored-user subtitle (sum of `votes` across buckets). Rows 10 → 1, each a horizontal bar (20px tall, 13px white label) with `pct% (votes votes)` printed on top. Bar widths are scaled to the **largest bucket**, not literal 0-100% — keeps the visualization legible when no single score breaks 40%. Data from Jikan's `/v4/anime/{id}/statistics`; MAL's v2 only exposes list-status counts (watching/completed/etc.), not the score histogram.
+- **Platforms section** (bottom of page, `_PlatformsSection`): divider + centered "Platforms" heading + a `Wrap` of rounded pill chips, one per streaming source (Crunchyroll, Netflix, Ani-One, etc.). Each chip launches the platform URL via `url_launcher` (`LaunchMode.externalApplication`). Section is hidden when Jikan returns no streaming entries. Data from Jikan's `/v4/anime/{id}/streaming`.
 - All section chevrons share the same compact style so spacing between sections is tight and consistent.
 - AppBar shows heart and share icons as **stubs** (no logic wired). Heart needs OAuth write to toggle favorites; share needs `share_plus` package.
 - **No Favorites count**: MAL API doesn't expose `num_favorites`. Could be scraped from the web profile later.
 
 ### Search page (`AnimeSearchPage`)
 Triggered by the search icon in the AppBar (visible only on the Anime tab — `_index == 3`).
-- Focused TextField in the AppBar; clear button (X) when non-empty.
+- AppBar title is a **rounded pill** (`#1E1E1E`, 24px radius) with a `Icons.search` prefix and `Icons.cancel` suffix that appears once the field has text. 16px right gutter inside the AppBar so the pill doesn't kiss the edge.
 - 350ms debounce, requires ≥3 chars before firing.
-- Hits `MalApi.searchAnime(q, limit: 30)`. Taps into `AnimeDetailPage`.
+- Hits `MalApi.searchAnime(q, limit: 30)` — query asks for `media_type`, `num_episodes`, `start_season`, `mean`, `num_list_users` so the row layout has real data.
+- Result rows mirror `_AnimeRow`: 90×120 poster, title at top, a meta line with a red `TV`/`Movie`/etc. badge + `28 ep, Fall 2023`, and a bottom line `★ 9.27 · 1,440,325 👥` (score + member count). 8px bottom padding inside each row so the bottom line isn't crunched against the next divider.
+- AppBar background tints from `#111111` → `#1A1A1A` when results have scrolled past 0 (same `NotificationListener<ScrollNotification>` pattern as the Anime tab).
+- Taps push `AnimeDetailPage`.
 
 ### AppBar avatar (`HomeShell`)
 Top-left circle. Three visual states:
@@ -175,7 +180,7 @@ Home / Movies / TV / Schedule are `_PlaceholderPage` centered-text stubs.
 - `Image.network` everywhere with no caching → consider `cached_network_image` once the list grows.
 - No list refresh action — cache is per-process. Add a refresh button to `_ListHeader` if data freshness matters.
 - Detail page **Favorites** is omitted (API doesn't expose `num_favorites`). Would need profile-page scraping.
-- **Jikan dependency** for characters/VAs, music themes, **and** score stats is the only third-party data source. Three Jikan calls fire per detail-page load (`/characters`, `/full`, `/statistics`). If Jikan goes down or rate-limits (3/s, 60/min), the sections just don't render — errors are swallowed in their respective FutureBuilders. Consider caching or merging into one `/full` call (themes already use `/full`, so it could absorb characters and stats too) if it ever becomes a sore spot.
+- **Jikan dependency** for characters/VAs, music themes, score stats, **and** streaming platforms is the only third-party data source. Four Jikan calls fire on the first visit to a detail page (`/characters`, `/full`, `/statistics`, `/streaming`). Each response is **memoized by anime id** in `MalApi._charactersCache` / `_themesCache` / `_scoreStatsCache` / `_streamingCache` for the session — revisiting a detail page hits the cache, not the network. Failed Futures are evicted from the cache so a one-off 429/network error doesn't poison subsequent loads. Jikan's published limit is 3 req/sec, 60 req/min; with caching, the only time we approach it is rapid first-time navigation between many distinct titles, in which case the affected sections just don't render (errors are swallowed in their FutureBuilders) and a refresh re-fetches.
 - Search page has **no filters** (genre/type/year/rating) — MAL search supports a few via the API, and many more only via the web UI. Add as the use case demands.
 - **Manga stats** require scraping (not in API). Profile page notes this in the UI.
 

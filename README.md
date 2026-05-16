@@ -13,7 +13,7 @@ A personal Flutter app for browsing my MyAnimeList account on Android. Built as 
   - Each row: poster, title, type/season, progress bar colored by status (green/blue/gold/rust/grey for watching/completed/on-hold/dropped/planned), personal score (left) + episodes (right)
   - Header + tab bar tint subtly when content is scrolled under them
   - Pagination handled (lists >1000 entries)
-- **Search**: debounced anime search with results that drill into the detail page.
+- **Search**: rounded pill search bar; debounced; results mirror the Anime tab rows (poster, type badge, score + member count) and drill into the detail page.
 - **Detail page**
   - Poster gallery with dot indicator
   - Score (with number of users), Rank, Popularity, Members — right-aligned
@@ -25,6 +25,7 @@ A personal Flutter app for browsing my MyAnimeList account on Android. Built as 
   - **Music**: row-aligned table of opening/ending themes (Jikan-sourced)
   - **Recommendations**: horizontally scrolling poster cards with the number of users who recommended each entry
   - **Score Stats**: per-score histogram (10→1) with vote counts (Jikan-sourced)
+  - **Platforms**: tappable chips that launch streaming services (Crunchyroll, Netflix, etc.) — Jikan-sourced
 - **Profile page** (requires OAuth login): avatar, joined date, anime statistics, status distribution bar.
 - **Auth**: MAL OAuth 2.0 PKCE flow. Tokens stored via `flutter_secure_storage` (Android Keystore).
 
