@@ -211,12 +211,20 @@ class AnimeListPage extends StatefulWidget {
   State<AnimeListPage> createState() => _AnimeListPageState();
 }
 
-enum ListSort { alphabetical, score, watched, airStart, lastUpdated }
+enum ListSort {
+  alphabetical,
+  score,
+  mean,
+  watched,
+  airStart,
+  lastUpdated,
+}
 
 extension on ListSort {
   String get label => switch (this) {
         ListSort.alphabetical => 'Alphabetical',
-        ListSort.score => 'Score',
+        ListSort.score => 'Your Score',
+        ListSort.mean => 'Score',
         ListSort.watched => 'Watched Episodes',
         ListSort.airStart => 'Air Start Date',
         ListSort.lastUpdated => 'Last Updated',
@@ -239,6 +247,15 @@ class _AnimeListPageState extends State<AnimeListPage>
   final Map<int, Future<List<AnimeListEntry>>> _cache = {};
   int _activeIndex = _initialIndex;
   ListSort _sort = ListSort.lastUpdated;
+  bool _scrolledUnder = false;
+
+  bool _onScroll(ScrollNotification n) {
+    final under = n.metrics.pixels > 0;
+    if (under != _scrolledUnder) {
+      setState(() => _scrolledUnder = under);
+    }
+    return false;
+  }
 
   List<AnimeListEntry> _sorted(List<AnimeListEntry> items) {
     final out = [...items];
@@ -248,6 +265,8 @@ class _AnimeListPageState extends State<AnimeListPage>
             a.title.toLowerCase().compareTo(b.title.toLowerCase()));
       case ListSort.score:
         out.sort((a, b) => b.score.compareTo(a.score));
+      case ListSort.mean:
+        out.sort((a, b) => (b.meanScore ?? -1).compareTo(a.meanScore ?? -1));
       case ListSort.watched:
         out.sort((a, b) => b.episodesWatched.compareTo(a.episodesWatched));
       case ListSort.airStart:
@@ -310,7 +329,9 @@ class _AnimeListPageState extends State<AnimeListPage>
       child: Column(
         children: [
           Container(
-            color: const Color(0xFF111111),
+            color: _scrolledUnder
+                ? const Color(0xFF1A1A1A)
+                : const Color(0xFF111111),
             child: TabBar(
               controller: _tabs,
               isScrollable: true,
@@ -351,17 +372,21 @@ class _AnimeListPageState extends State<AnimeListPage>
                       count: items.length,
                       sort: _sort,
                       onSortChanged: (v) => setState(() => _sort = v),
+                      scrolledUnder: _scrolledUnder,
                     ),
                     Expanded(
-                      child: ScrollConfiguration(
-                        behavior: ScrollConfiguration.of(context)
-                            .copyWith(overscroll: false),
-                        child: ListView.separated(
-                          physics: const ClampingScrollPhysics(),
-                          itemCount: items.length,
-                          separatorBuilder: (_, __) => const Divider(
-                              height: 1, color: Color(0xFF1F1F1F)),
-                          itemBuilder: (_, i) => _AnimeRow(entry: items[i]),
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: _onScroll,
+                        child: ScrollConfiguration(
+                          behavior: ScrollConfiguration.of(context)
+                              .copyWith(overscroll: false),
+                          child: ListView.separated(
+                            physics: const ClampingScrollPhysics(),
+                            itemCount: items.length,
+                            separatorBuilder: (_, __) => const Divider(
+                                height: 1, color: Color(0xFF1F1F1F)),
+                            itemBuilder: (_, i) => _AnimeRow(entry: items[i]),
+                          ),
                         ),
                       ),
                     ),
@@ -396,7 +421,7 @@ class _AnimeRow extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 2),
         child: SizedBox(
           height: 120,
           child: Row(
@@ -441,16 +466,31 @@ class _AnimeRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        total > 0 ? '$watched / $total ep' : '$watched ep',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
+                    Row(
+                      children: [
+                        if (entry.score > 0) ...[
+                          const Icon(Icons.star,
+                              color: Color(0xFFE5B72D), size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${entry.score}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                        const Spacer(),
+                        Text(
+                          total > 0 ? '$watched / $total ep' : '$watched ep',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
@@ -469,18 +509,20 @@ class _ListHeader extends StatelessWidget {
     required this.count,
     required this.sort,
     required this.onSortChanged,
+    required this.scrolledUnder,
   });
 
   final int count;
   final ListSort sort;
   final ValueChanged<ListSort> onSortChanged;
+  final bool scrolledUnder;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF111111),
+      color: scrolledUnder ? const Color(0xFF1A1A1A) : const Color(0xFF111111),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Row(
           children: [
             const SizedBox(width: 48),

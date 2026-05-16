@@ -7,8 +7,9 @@ A personal Flutter app for browsing my MyAnimeList account on Android. Built as 
 - **Bottom nav** modeled on the official MAL app: Home / Movies / TV / Anime / Schedule (only Anime is wired up so far).
 - **Anime tab**
   - Status filters across the top: All / Watching / Completed / On Hold / Dropped / Plan to Watch
-  - Pinned header with entry count and a sort menu (Alphabetical, Score, Watched Episodes, Air Start Date, Last Updated)
-  - Each row: poster, title, type/season, green progress bar, episode counter
+  - Pinned header with entry count and a sort menu (Alphabetical, Your Score, Score, Watched Episodes, Air Start Date, Last Updated)
+  - Each row: poster, title, type/season, green progress bar, personal score (left) + episodes (right)
+  - Header + tab bar tint when content is scrolled under them
   - Pagination handled (lists >1000 entries)
 - **Search**: debounced anime search with results that drill into the detail page.
 - **Detail page**

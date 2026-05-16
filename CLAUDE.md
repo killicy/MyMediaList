@@ -94,12 +94,13 @@ Models MAL's "My List" screen for the hardcoded user.
 
 Layout (Column, top to bottom):
 1. **Status TabBar** — horizontally scrollable, `isScrollable: true`, white underline indicator. Tabs: All / Watching / Completed / On Hold / Dropped / Plan to Watch. Defaults to Watching.
-2. **Pinned `_ListHeader`** — stays put while the list scrolls. Shows `N Entries` (blue, with bar-chart icon) centered, sort `Icons.tune` on the right.
-3. **List** — `ListView.separated` of `_AnimeRow` (90×120 poster, title, `TV · 2024 fall`, green progress bar, `watched / total ep`). Tap routes to `AnimeDetailPage`.
+2. **Pinned `_ListHeader`** — stays put while the list scrolls. Shows `N Entries` (blue, with bar-chart icon) centered, sort `Icons.tune` on the right. Tight 2px vertical padding so it doesn't dominate.
+3. **List** — `ListView.separated` of `_AnimeRow`. Row content: 90×120 poster, title (max 2 lines), `TV · 2024 fall` subtitle, green progress bar, and a bottom row with **★ user score on the left** (only when `list_status.score > 0`) and `watched / total ep` on the right. Row vertical padding is 2px — tight by design. Tap routes to `AnimeDetailPage`.
 
 Behaviour:
 - **Per-status cache**: `Map<int, Future<List<AnimeListEntry>>>` keyed by tab index. Switching tabs is instant after first load.
-- **Sort** (`ListSort` enum) is applied client-side via `_sorted(items)` so switching sort is instant. Options: Alphabetical, Score, Watched Episodes, Air Start Date, Last Updated. Server-side `sort=list_updated_at` is what we ask for, then re-sorted locally per the user's selection.
+- **Sort** (`ListSort` enum) is applied client-side via `_sorted(items)` so switching sort is instant. Options in menu order: **Alphabetical / Your Score / Score / Watched Episodes / Air Start Date / Last Updated**. `Your Score` is `list_status.score` (user's personal rating); `Score` is `anime.mean` (MAL community mean, fetched via the `mean` field on the list query). Server-side `sort=list_updated_at` is what we ask for, then re-sorted locally per the user's selection.
+- **Scrolled-under tint**: a `NotificationListener<ScrollNotification>` flips `_scrolledUnder` whenever the list's `metrics.pixels > 0`. Both the TabBar container and `_ListHeader` swap background to `#1A1A1A` while scrolled, back to `#111111` at the top — mirrors the AppBar's surface-tint elevation feel.
 - **No pull-to-refresh** (intentionally removed per user request). Cache only invalidates on app restart; add a refresh button in `_ListHeader` if needed.
 - **Overscroll stretch is disabled** via `ScrollConfiguration(overscroll: false)` + `ClampingScrollPhysics` — same convention used throughout.
 

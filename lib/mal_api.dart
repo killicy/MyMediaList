@@ -128,7 +128,7 @@ class MalApi {
     Uri uri = Uri.parse('$_base/users/$userName/animelist').replace(
       queryParameters: {
         if (status != null) 'status': status,
-        'fields': 'list_status,main_picture,num_episodes,media_type,start_season',
+        'fields': 'list_status,main_picture,num_episodes,media_type,start_season,mean',
         'limit': '$pageSize',
         'sort': 'list_updated_at',
         'nsfw': 'true',
@@ -555,6 +555,7 @@ class AnimeListEntry {
   final int episodesWatched;
   final int score;
   final DateTime? updatedAt;
+  final double? meanScore; // MAL community mean
 
   AnimeListEntry({
     required this.id,
@@ -567,6 +568,7 @@ class AnimeListEntry {
     required this.episodesWatched,
     required this.score,
     this.updatedAt,
+    this.meanScore,
   });
 
   factory AnimeListEntry.fromJson(Map<String, dynamic> j) {
@@ -584,6 +586,7 @@ class AnimeListEntry {
       episodesWatched: (status['num_episodes_watched'] as int?) ?? 0,
       score: (status['score'] as int?) ?? 0,
       updatedAt: DateTime.tryParse((status['updated_at'] as String?) ?? ''),
+      meanScore: (node['mean'] as num?)?.toDouble(),
     );
   }
 
